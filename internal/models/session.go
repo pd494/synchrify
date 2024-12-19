@@ -8,5 +8,6 @@ type Session struct {
 	// Add more fields as needed:
 	Users[] User	`json:"users"`
 
+
 	LastActive     time.Time `json:"last_active"`
 } 

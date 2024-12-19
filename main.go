@@ -12,6 +12,7 @@ func main() {
 	http.HandleFunc("/createSession", handlers.CreateSession)
 	http.HandleFunc("/getSession", handlers.GetSession)
 	http.HandleFunc("/addUser", handlers.AddUser)
+	http.HandleFunc("/ws", handlers.HandleWebSocket)
 
 	err := http.ListenAndServe(":9090", nil)
 	if err != nil {

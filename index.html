@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+</head>
+<body>
+    <h1>WebSocket Test</h1>
+    <input type="text" id="username" placeholder="Enter your username">
+    <button id="join">Join Session</button>
+    <div id="messages"></div>
+
+    <script>
+        const sessionID = "78cd4a53-2c32-438b-a514-adcdf6672a76"; // Replace with your session ID
+        const ws = new WebSocket(`ws://localhost:9090/ws?session_id=${sessionID}`);
+
+        ws.onopen = () => {
+            console.log("Connected to WebSocket " + sessionID);
+        };
+
+        ws.onmessage = (event) => {
+            const messagesDiv = document.getElementById("messages");
+            messagesDiv.innerHTML += `<p>${event.data}</p>`;
+        };
+
+        document.getElementById("join").onclick = () => {
+            const username = document.getElementById("username").value;
+            ws.send(`User ${username} has joined the session!`);
+        };
+
+        ws.onclose = () => {
+            console.log("Disconnected from WebSocket");
+        };
+    </script>
+</body>
+</html>
