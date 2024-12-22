@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	
+
 	"fmt"
 	"log"
 	"net/http"
@@ -10,9 +10,9 @@ import (
 	// "strings"
 	"time"
 
-	"synchrify/internal/models"
+	"synchrify/models"
 
-	"synchrify/internal/connections"
+	"synchrify/connections"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -31,38 +31,104 @@ var upgrader = websocket.Upgrader{
 
 var hub = connections.NewHub()
 
-func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-    sessionID := r.URL.Query().Get("session_id")
-    if sessionID == "" {
-        http.Error(w, "Session ID is required", http.StatusBadRequest)
-        return
-    }
+// Add this struct for chat messages
 
-    conn, err := upgrader.Upgrade(w, r, nil)
-    if err != nil {
-        log.Printf("websocket upgrade error: %v", err)
-        return
-    }
+
+func HandleScreenShare(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	userID := r.URL.Query().Get("user_id")
+	if sessionID == "" || userID == "" {
+		http.Error(w, "Session ID and User ID are required", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("websocket upgrade error: %v", err)
+		return
+	}
 
 	client := &connections.Client{
 		Hub:       hub,
 		Conn:      conn,
 		SessionID: sessionID,
+		UserID:    userID,
 	}
 
-    hub.RegisterClient(client)
-    defer hub.UnregisterClient(client)
+	hub.RegisterClient(client)
+	defer hub.UnregisterClient(client)
 
 	for {
-        _, message, err := conn.ReadMessage()
-        if err != nil {
-            log.Printf("read error: %v", err)
-            break
-        }
-        
-        // Broadcast the message to all clients in the session
-        hub.BroadcastToSession(sessionID, string(message))
-    }
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("read error: %v", err)
+			break
+		}
+
+		var message models.WebRTCMessage
+		if err := json.Unmarshal(msg, &message); err != nil {
+			log.Printf("error unmarshaling message: %v", err)
+			continue
+		}
+
+		// Broadcast the WebRTC signaling message to other clients in the session
+		msgJSON, _ := json.Marshal(message)
+		hub.BroadcastToSessionExcept(sessionID, string(msgJSON), userID)
+	}
+}
+
+func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	userID := r.URL.Query().Get("user_id")
+	if sessionID == "" || userID == "" {
+		http.Error(w, "Session ID and User ID are required", http.StatusBadRequest)
+		return
+	}
+
+	// Create session if it doesn't exist
+	if _, exists := sessions[sessionID]; !exists {
+		sessions[sessionID] = models.Session{
+			ID:         sessionID,
+			CreatedAt:  time.Now(),
+			Users:      []models.User{},
+			LastActive: time.Now(),
+		}
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("websocket upgrade error: %v", err)
+		return
+	}
+
+	client := &connections.Client{
+		Hub:       hub,
+		Conn:      conn,
+		SessionID: sessionID,
+		UserID:    userID,
+	}
+
+	hub.RegisterClient(client)
+	defer hub.UnregisterClient(client)
+
+	for {
+		_, messageBytes, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("read error: %v", err)
+			break
+		}
+
+		// Create a structured chat message
+		chatMsg := models.ChatMessage{
+			UserID:    userID,
+			Text:      string(messageBytes),
+			Timestamp: time.Now(),
+		}
+
+		// Convert to JSON and broadcast
+		msgJSON, _ := json.Marshal(chatMsg)
+		hub.BroadcastToSession(sessionID, string(msgJSON))
+	}
 }
 func Health(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "great!")
@@ -124,8 +190,6 @@ func AddUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// json.NewEncoder(w).Encode(sessions[sessionID].Users)
-
-
 
 }
 
